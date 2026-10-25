@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root { --bg:#f8f5ee; --ink:#222; --sub:#6b675f; --line:#d9d4c8; --card:#fffdf8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1e1d1a; --ink:#f1ede4; --sub:#a39e92; --line:#3a3832; --card:#262521; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.7 "Hiragino Sans","Yu Gothic",sans-serif; }
+  main { max-width:480px; margin:0 auto; padding:32px 20px 56px; }
+  header { text-align:center; margin-bottom:32px; }
+  h1 { font:500 26px/1.2 "Hiragino Mincho ProN","Yu Mincho",serif; letter-spacing:.18em; margin:0 0 6px; }
+  header p { margin:0; font-size:12px; letter-spacing:.2em; color:var(--sub); }
+  h2 { font-size:14px; font-weight:600; margin:28px 0 10px; }
+  .row { display:flex; gap:10px; }
+  .opt, .day, .time { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:4px; font:inherit; cursor:pointer; }
+  .opt { flex:1; padding:14px 8px; text-align:center; }
+  .opt b { display:block; font-weight:600; } .opt span { color:var(--sub); font-size:14px; }
+  .days { display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; }
+  .day { flex:none; width:58px; padding:8px 0; text-align:center; font-size:13px; line-height:1.4; }
+  .times { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .time { padding:10px 0; }
+  .on { background:var(--ink); color:var(--bg); border-color:var(--ink); }
+  input { width:100%; padding:12px; border:1px solid var(--line); border-radius:4px; background:var(--card); color:var(--ink); font:inherit; margin-bottom:10px; }
+  button:focus-visible, input:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+  .note { color:var(--sub); font-size:14px; margin:6px 0 0; }
+  .go { width:100%; margin-top:22px; padding:15px; border:0; border-radius:4px; background:var(--ink); color:var(--bg); font:600 16px inherit; cursor:pointer; }
+  .go:disabled { opacity:.4; cursor:default; }
+  .msg { color:#b3402f; font-size:14px; min-height:22px; margin:10px 0 0; }
+  .done { text-align:center; padding-top:24px; } .done h2 { font:500 22px "Hiragino Mincho ProN","Yu Mincho",serif; }
+  [hidden] { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>RE:SET BODY</h1><p>BODY CARE &amp; RELAXATION</p></header>
+
+  <section id="form">
+    <h2>コース</h2>
+    <div class="row" id="courses"></div>
+    <h2>日にち</h2>
+    <div class="days" id="days"></div>
+    <h2>時間</h2>
+    <div class="times" id="times"><p class="note" style="grid-column:1/-1">先にコースと日にちを選んでください。</p></div>
+    <h2>お客様情報</h2>
+    <input id="name" placeholder="お名前" autocomplete="name">
+    <input id="tel" type="tel" placeholder="電話番号(例:09012345678)" autocomplete="tel">
+    <p class="note">お支払いは現金のみです。</p>
+    <p class="msg" id="msg" role="alert"></p>
+    <button class="go" id="go" disabled>この内容で予約する</button>
+  </section>
+
+  <section id="done" class="done" hidden>
+    <h2>ご予約を受け付けました</h2>
+    <p id="summary"></p>
+    <p class="note">確認メッセージをLINEにお送りしました。お支払いは現金のみです。</p>
+  </section>
+</main>
+
+<script>
+const LIFF_ID = 'ここにLIFF IDを貼る';
+const API_URL = 'ここにウェブアプリのURL(/execで終わるもの)を貼る';
+const COURSES = {"60":{"label":"60分コース","price":5000},"30":{"label":"30分コース","price":3000}};
+const W = ['日','月','火','水','木','金','土'];
+const st = { course:null, date:null, start:null };
+let idToken = null;
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2,'0');
+const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+const lineErr = t => { $('msg').textContent = t + ' [LINE内:' + (liff.isInClient() ? 'はい' : 'いいえ') + ']'; };
+let ready = false;
+setTimeout(() => { if (!ready) lineErr('LINEとの接続が終わりません(8秒待ちました)。'); }, 8000);
+liff.init({ liffId: LIFF_ID }).then(() => {
+  ready = true;
+  if (!liff.isLoggedIn()) { liff.login(); return; }
+  idToken = liff.getIDToken();
+  if (!idToken) lineErr('ログイン情報を取得できませんでした(LIFFのScope「openid」を確認してください)。');
+  return liff.getProfile().then(p => { $('name').value = p.displayName || ''; });
+}).catch(e => { ready = true; lineErr('LINEの読み込みに失敗しました: ' + ((e && e.message) || e)); });
+
+Object.keys(COURSES).sort((a,b) => b-a).forEach(k => {
+  const b = document.createElement('button');
+  b.className = 'opt'; b.dataset.k = k;
+  b.innerHTML = `<b>${COURSES[k].label}</b><span>${COURSES[k].price.toLocaleString()}円</span>`;
+  b.onclick = () => { st.course = k; st.start = null; mark('#courses .opt', x => x.dataset.k === k); load(); };
+  $('courses').appendChild(b);
+});
+
+const today = new Date();
+for (let i = 0; i < 31; i++) {
+  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i), v = fmt(d);
+  const b = document.createElement('button');
+  b.className = 'day'; b.dataset.k = v;
+  b.innerHTML = `${d.getMonth()+1}/${d.getDate()}<br>${W[d.getDay()]}`;
+  b.onclick = () => { st.date = v; st.start = null; mark('#days .day', x => x.dataset.k === v); load(); };
+  $('days').appendChild(b);
+}
+
+function mark(sel, test) { document.querySelectorAll(sel).forEach(x => x.classList.toggle('on', test(x))); check(); }
+function check() { $('go').disabled = !(st.course && st.date && st.start && $('name').value.trim() && $('tel').value.trim()); }
+['name','tel'].forEach(i => $(i).addEventListener('input', check));
+
+function load() {
+  if (!st.course || !st.date) return;
+  $('times').innerHTML = '<p class="note" style="grid-column:1/-1">空き状況を確認しています…</p>';
+  fetch(API_URL + '?' + new URLSearchParams({ action: 'slots', date: st.date, course: st.course }))
+    .then(r => r.json()).then(list => {
+      $('times').innerHTML = list.length ? '' : '<p class="note" style="grid-column:1/-1">この日は空きがありません。別の日をお選びください。</p>';
+      list.forEach(t => {
+        const b = document.createElement('button');
+        b.className = 'time'; b.textContent = t;
+        b.onclick = () => { st.start = t; mark('#times .time', x => x.textContent === t); };
+        $('times').appendChild(b);
+      });
+    }).catch(() => { $('times').innerHTML = '<p class="note" style="grid-column:1/-1">空き状況を取得できませんでした。もう一度お試しください。</p>'; });
+}
+
+$('go').onclick = () => {
+  if (!idToken) { lineErr('ログイン情報がありません。LINEのメニューから開き直してください。'); return; }
+  $('go').disabled = true; $('msg').textContent = '';
+  const p = { course: st.course, date: st.date, start: st.start, name: $('name').value.trim(), tel: $('tel').value.trim() };
+  fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ p: p, idToken: idToken }) })
+    .then(r => r.json()).then(r => {
+      if (!r.ok) { $('msg').textContent = r.msg; st.start = null; check(); load(); return; }
+      $('summary').innerHTML = `${r.when}<br>${r.course}(${r.price.toLocaleString()}円)`;
+      $('form').hidden = true; $('done').hidden = false;
+    }).catch(() => { $('msg').textContent = '通信に失敗しました。もう一度お試しください。'; check(); });
+};
+</script>
+</body>
+</html>
