@@ -22,8 +22,8 @@
   .times { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
   .time { padding:10px 0; }
   .on { background:var(--ink); color:var(--bg); border-color:var(--ink); }
-  input { width:100%; padding:12px; border:1px solid var(--line); border-radius:4px; background:var(--card); color:var(--ink); font:inherit; margin-bottom:10px; }
-  button:focus-visible, input:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+  input, textarea { width:100%; padding:12px; border:1px solid var(--line); border-radius:4px; background:var(--card); color:var(--ink); font:inherit; margin-bottom:10px; resize:vertical; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
   .note { color:var(--sub); font-size:14px; margin:6px 0 0; }
   .go { width:100%; margin-top:22px; padding:15px; border:0; border-radius:4px; background:var(--ink); color:var(--bg); font:600 16px inherit; cursor:pointer; }
   .go:disabled { opacity:.4; cursor:default; }
@@ -46,6 +46,7 @@
     <h2>お客様情報</h2>
     <input id="name" placeholder="お名前" autocomplete="name">
     <input id="tel" type="tel" placeholder="電話番号(例:09012345678)" autocomplete="tel">
+    <textarea id="note" rows="3" maxlength="200" placeholder="ご要望・気になる部位など(任意)"></textarea>
     <p class="note">お支払いは現金のみです。</p>
     <p class="msg" id="msg" role="alert"></p>
     <button class="go" id="go" disabled>この内容で予約する</button>
@@ -120,7 +121,7 @@ function load() {
 $('go').onclick = () => {
   if (!idToken) { lineErr('ログイン情報がありません。LINEのメニューから開き直してください。'); return; }
   $('go').disabled = true; $('msg').textContent = '';
-  const p = { course: st.course, date: st.date, start: st.start, name: $('name').value.trim(), tel: $('tel').value.trim() };
+  const p = { course: st.course, date: st.date, start: st.start, name: $('name').value.trim(), tel: $('tel').value.trim(), note: $('note').value.trim() };
   fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ p: p, idToken: idToken }) })
     .then(r => r.json()).then(r => {
       if (!r.ok) { $('msg').textContent = r.msg; st.start = null; check(); load(); return; }
